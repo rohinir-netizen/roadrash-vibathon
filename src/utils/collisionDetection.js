@@ -1,31 +1,28 @@
 /**
  * collisionDetection.js
- * Axis-Aligned Bounding Box (AABB) collision check.
+ * AABB (Axis-Aligned Bounding Box) collision between the player bike and an obstacle.
  *
- * Both the bike and obstacles are treated as boxes defined by their
- * center position and half-extents.
+ * Coordinate system:
+ *   • Bike is always at visual Z = 0 (world scrolls past it).
+ *   • Obstacle has an (x, z) world position; collision window is when z is near 0.
  */
 
-// Half-extents for the player bike
-const BIKE_HALF = { x: 0.4, z: 0.8 };
+const BIKE_HALF = { x: 0.45, z: 1.0 };
 
-// Half-extents for each obstacle type
 const OBSTACLE_HALF = {
-    car: { x: 0.55, z: 1.0 },
-    barrier: { x: 1.2, z: 0.25 },
+    car: { x: 0.58, z: 1.1 },
+    barrier: { x: 1.25, z: 0.3 },
 };
 
 /**
- * @param {{ x: number, z: number }} bikePos  – bike world position
- * @param {{ x: number, z: number }} obs       – obstacle world position
- * @param {string} obsType                     – 'car' | 'barrier'
+ * @param {number} bikeX      – bike's X position in world space
+ * @param {{ x: number, z: number }} obs – obstacle descriptor
+ * @param {string} type       – 'car' | 'barrier'
  * @returns {boolean}
  */
-export function checkCollision(bikePos, obs, obsType = 'car') {
-    const oh = OBSTACLE_HALF[obsType] ?? OBSTACLE_HALF.car;
-
-    const overlapX = Math.abs(bikePos.x - obs.x) < BIKE_HALF.x + oh.x;
-    const overlapZ = Math.abs(bikePos.z - obs.z) < BIKE_HALF.z + oh.z;
-
+export function checkCollision(bikeX, obs, type = 'car') {
+    const oh = OBSTACLE_HALF[type] ?? OBSTACLE_HALF.car;
+    const overlapX = Math.abs(bikeX - obs.x) < BIKE_HALF.x + oh.x;
+    const overlapZ = Math.abs(obs.z) < BIKE_HALF.z + oh.z; // bike at z=0
     return overlapX && overlapZ;
 }

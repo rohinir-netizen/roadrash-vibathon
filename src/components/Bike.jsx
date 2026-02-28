@@ -1,117 +1,132 @@
 /**
  * Bike.jsx
- * The player-controlled bike mesh.
+ * Neon electric-blue racing bike.
  *
- * - Reads keyboard input via the keys ref each frame
- * - Moves laterally (X) and slightly forward/backward (Z) within bounds
- * - Tilts the bike body on turns for a dynamic feel
- * - Exposes its world position via bikeRef for collision checks in GameCanvas
+ * This component is PURELY visual — all physics/steering logic lives in GameScene.
+ * It reads `bikeXRef` (number) and `leanRef` (number) set by GameScene's useFrame,
+ * and animates lean, wheel rotation, and nitro flame visibility.
  *
  * Props:
- *   keysRef  {React.MutableRefObject} – from useKeyboardControls
- *   bikeRef  {React.MutableRefObject} – { x, z } position shared with parent
- *   speedRef {React.MutableRefObject} – current forward speed
- *   gameOver {boolean}                – freeze movement when true
+ *   bikeXRef  – ref to current X position (updated by GameScene)
+ *   leanRef   – ref to current Z-axis lean angle (updated by GameScene)
+ *   nitroRef  – nitro state from useNitro
  */
-import { useRef } from 'react';
+import { useRef, memo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { NitroEffect } from './NitroEffect';
 
-// Lateral movement bounds (3 lanes: -2, 0, +2)
-const X_MIN = -3.2;
-const X_MAX = 3.2;
+export const Bike = memo(function Bike({ bikeXRef, leanRef, nitroRef }) {
+  const groupRef      = useRef();
+  const frontWheelRef = useRef();
+  const rearWheelRef  = useRef();
+  const headlightRef  = useRef();
 
-// The bike starts at z = 5 (in front of the camera but visible)
-const BIKE_START_Z = 5;
+  useFrame(({ clock }, delta) => {
+    if (!groupRef.current) return;
+    const t = clock.getElapsedTime();
 
-export function Bike({ keysRef, bikeRef, speedRef, gameOver }) {
-  const groupRef = useRef();
-  const leanRef = useRef(0); // current lean angle
+    // Sync position & lean from shared refs
+    groupRef.current.position.x = bikeXRef?.current ?? 0;
+    groupRef.current.rotation.z = leanRef?.current  ?? 0;
 
-  // Initialise bikeRef position
-  if (bikeRef) {
-    bikeRef.current.x = 0;
-    bikeRef.current.z = BIKE_START_Z;
-  }
+    // Wheel spin speed proportional to nitro multiplier
+    const spin = 8 * (nitroRef?.current?.multiplier ?? 1);
+    if (frontWheelRef.current) frontWheelRef.current.rotation.x -= spin * delta;
+    if (rearWheelRef.current)  rearWheelRef.current.rotation.x  -= spin * delta;
 
-  useFrame((_, delta) => {
-    if (gameOver || !groupRef.current) return;
-
-    const keys = keysRef.current;
-    const lateralSpeed = 6; // units per second left/right
-    const tiltTarget =
-      keys.ArrowLeft ? 0.25 : keys.ArrowRight ? -0.25 : 0;
-
-    // Smooth lean interpolation
-    leanRef.current += (tiltTarget - leanRef.current) * 8 * delta;
-
-    // Update X position
-    let nx = groupRef.current.position.x;
-    if (keys.ArrowLeft) nx -= lateralSpeed * delta;
-    if (keys.ArrowRight) nx += lateralSpeed * delta;
-    nx = Math.max(X_MIN, Math.min(X_MAX, nx));
-    groupRef.current.position.x = nx;
-
-    // Apply lean
-    groupRef.current.rotation.z = leanRef.current;
-
-    // Sync bikeRef for collision detection
-    if (bikeRef) {
-      bikeRef.current.x = nexus(groupRef.current.position.x);
-      bikeRef.current.z = BIKE_START_Z;
+    // Headlight intensity pulse
+    if (headlightRef.current) {
+      headlightRef.current.intensity = 4 + Math.sin(t * 3) * 0.5;
     }
   });
 
   return (
-    <group ref={groupRef} position={[0, 0, BIKE_START_Z]}>
-      {/* ── Body ── */}
+    <group ref={groupRef} position={[0, 0, 0]}>
+      {/* ── BODY ── */}
       <mesh position={[0, 0.45, 0]} castShadow>
-        <boxGeometry args={[0.5, 0.5, 1.5]} />
-        <meshStandardMaterial color="#1a73e8" metalness={0.6} roughness={0.3} />
+        <boxGeometry args={[0.55, 0.5, 1.7]} />
+        <meshStandardMaterial color="#0022ff" emissive="#0011cc" emissiveIntensity={2} metalness={0.8} roughness={0.2} />
       </mesh>
 
-      {/* ── Fairing / front cowl ── */}
-      <mesh position={[0, 0.65, 0.55]} castShadow>
-        <boxGeometry args={[0.42, 0.32, 0.55]} />
-        <meshStandardMaterial color="#1558b0" metalness={0.7} roughness={0.2} />
+      {/* ── FRONT FAIRING ── */}
+      <mesh position={[0, 0.68, 0.65]} castShadow>
+        <boxGeometry args={[0.48, 0.32, 0.6]} />
+        <meshStandardMaterial color="#0044ff" emissive="#0033ee" emissiveIntensity={2.5} metalness={0.9} roughness={0.15} />
       </mesh>
 
-      {/* ── Rider torso ── */}
-      <mesh position={[0, 0.95, 0.1]} castShadow>
-        <boxGeometry args={[0.38, 0.55, 0.5]} />
-        <meshStandardMaterial color="#e67e22" />
+      {/* ── FRONT FAIRING NEON STRIP (cyan) ── */}
+      <mesh position={[0, 0.58, 0.95]}>
+        <boxGeometry args={[0.44, 0.06, 0.06]} />
+        <meshStandardMaterial color="#00eeff" emissive="#00eeff" emissiveIntensity={8} toneMapped={false} />
       </mesh>
 
-      {/* ── Rider helmet ── */}  
-      <mesh position={[0, 1.38, 0.22]} castShadow>
-        <sphereGeometry args={[0.2, 12, 12]} />
-        <meshStandardMaterial color="#e74c3c" metalness={0.5} roughness={0.3} />
+      {/* ── RIDER TORSO ── */}
+      <mesh position={[0, 0.97, 0.1]} castShadow>
+        <boxGeometry args={[0.42, 0.6, 0.52]} />
+        <meshStandardMaterial color="#111133" metalness={0.7} roughness={0.3} />
+      </mesh>
+      {/* Rider chest neon stripe */}
+      <mesh position={[0, 1.0, 0.27]}>
+        <boxGeometry args={[0.38, 0.08, 0.04]} />
+        <meshStandardMaterial color="#00eeff" emissive="#00eeff" emissiveIntensity={6} toneMapped={false} />
       </mesh>
 
-      {/* ── Front wheel ── */}
-      <mesh position={[0, 0.22, 0.75]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.22, 0.22, 0.12, 18]} />
-        <meshStandardMaterial color="#111" />
+      {/* ── HELMET ── */}
+      <mesh position={[0, 1.42, 0.22]} castShadow>
+        <sphereGeometry args={[0.22, 14, 14]} />
+        <meshStandardMaterial color="#0033ff" emissive="#0022cc" emissiveIntensity={2} metalness={0.9} roughness={0.1} />
+      </mesh>
+      {/* Visor */}
+      <mesh position={[0, 1.41, 0.4]}>
+        <boxGeometry args={[0.28, 0.1, 0.06]} />
+        <meshStandardMaterial color="#00eeff" emissive="#00eeff" emissiveIntensity={5} transparent opacity={0.8} toneMapped={false} />
       </mesh>
 
-      {/* ── Rear wheel ── */}
-      <mesh position={[0, 0.22, -0.75]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.22, 0.22, 0.14, 18]} />
-        <meshStandardMaterial color="#111" />
+      {/* ── FRONT WHEEL ── */}
+      <mesh ref={frontWheelRef} position={[0, 0.22, 0.82]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.24, 0.24, 0.14, 16]} />
+        <meshStandardMaterial color="#0a0a1a" metalness={0.5} />
+      </mesh>
+      {/* Front wheel neon rim */}
+      <mesh position={[0, 0.22, 0.82]} rotation={[0, 0, Math.PI / 2]}>
+        <torusGeometry args={[0.22, 0.025, 8, 24]} />
+        <meshStandardMaterial color="#00eeff" emissive="#00eeff" emissiveIntensity={5} toneMapped={false} />
       </mesh>
 
-      {/* ── Exhaust pipes ── */}
-      {[-0.18, 0.18].map((xOff, i) => (
-        <mesh key={i} position={[xOff, 0.28, -0.85]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.04, 0.04, 0.3, 8]} />
-          <meshStandardMaterial color="#888" metalness={0.9} />
+      {/* ── REAR WHEEL ── */}
+      <mesh ref={rearWheelRef} position={[0, 0.22, -0.82]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.26, 0.26, 0.18, 16]} />
+        <meshStandardMaterial color="#0a0a1a" metalness={0.5} />
+      </mesh>
+      {/* Rear wheel neon rim */}
+      <mesh position={[0, 0.22, -0.82]} rotation={[0, 0, Math.PI / 2]}>
+        <torusGeometry args={[0.24, 0.028, 8, 24]} />
+        <meshStandardMaterial color="#dd00ff" emissive="#dd00ff" emissiveIntensity={5} toneMapped={false} />
+      </mesh>
+
+      {/* ── EXHAUST PIPES ── */}
+      {[-0.2, 0.2].map((xo, i) => (
+        <mesh key={i} position={[xo, 0.3, -0.98]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.045, 0.035, 0.35, 8]} />
+          <meshStandardMaterial color="#334455" metalness={0.95} roughness={0.1} />
         </mesh>
       ))}
 
-      {/* ── Headlight glow ── */}
-      <pointLight position={[0, 0.7, 1]} intensity={1.5} distance={6} color="#70b8ff" />
+      {/* ── BODY NEON UNDERLINE ── */}
+      <mesh position={[0, 0.06, 0]}>
+        <boxGeometry args={[0.5, 0.04, 1.6]} />
+        <meshStandardMaterial color="#0066ff" emissive="#0066ff" emissiveIntensity={6} toneMapped={false} />
+      </mesh>
+
+      {/* ── HEADLIGHT ── */}
+      <pointLight ref={headlightRef} position={[0, 0.65, 1.1]} color="#88ccff" intensity={4} distance={12} />
+      <mesh position={[0, 0.62, 0.96]}>
+        <boxGeometry args={[0.3, 0.1, 0.05]} />
+        <meshStandardMaterial color="#ffffff" emissive="#aaddff" emissiveIntensity={6} toneMapped={false} />
+      </mesh>
+
+      {/* ── NITRO FLAME (always in tree, toggled via ref) ── */}
+      <NitroEffect nitroRef={nitroRef} />
     </group>
   );
-}
-
-// tiny helper to avoid undefined
-function nexus(v) { return v ?? 0; }
+});

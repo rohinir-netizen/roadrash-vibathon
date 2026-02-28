@@ -1,36 +1,39 @@
 /**
  * obstacleSpawner.js
- * Factory for creating randomised obstacle objects.
+ * Generates randomised obstacle descriptors for the neon racing world.
  *
- * The road has 3 lanes centred at x = -2, 0, +2.
- * Obstacles spawn at z = -40 (far ahead) and move toward the camera (positive z).
+ * Lane X positions: -2, 0, +2
+ * Obstacles spawn far ahead at z = -50 and scroll toward z = 0 (the bike).
  */
 
 let nextId = 0;
 
-// Possible lane X positions
 const LANES = [-2, 0, 2];
+const TYPES = ['car', 'car', 'car', 'barrier']; // cars more common
 
-// Possible obstacle types
-const TYPES = ['car', 'car', 'car', 'barrier']; // cars are more common
+// Neon palette tags (used by Obstacle.jsx for colour selection)
+const COLORS = ['red', 'orange', 'pink'];
 
 /**
- * Returns a fresh obstacle descriptor.
- * @returns {{ id: number, x: number, z: number, type: string }}
+ * @returns {{ id, x, z, type, colorTag }}
  */
 export function spawnObstacle() {
     const lane = LANES[Math.floor(Math.random() * LANES.length)];
     const type = TYPES[Math.floor(Math.random() * TYPES.length)];
+    const colorTag = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const isOncoming = Math.random() < 0.4; // 40% chance for oncoming traffic
 
     return {
         id: nextId++,
         x: lane,
-        z: -40,
+        z: -120, // Spawn further out for oncoming effect
         type,
+        colorTag,
+        isOncoming
     };
 }
 
-/** Reset the id counter (used when restarting the game). */
+/** Call when restarting the game. */
 export function resetSpawner() {
     nextId = 0;
 }

@@ -1,182 +1,201 @@
 /**
  * GameCanvas.jsx
- * Core R3F scene that wires together Road, Bike, Obstacles, ScoreBoard.
+ * ─────────────────────────────────────────────────────────────────
+ * HIGH PERFORMANCE REFACTOR — Zero frame-based React re-renders.
  *
- * Responsibilities:
- * 1. Runs the central useFrame game-loop:
- *    - Moves all obstacles toward the player each tick
- *    - Checks AABB collision between bike and each obstacle
- *    - Increments score over time
- *    - Spawns new obstacles at a regular interval
- *    - Gradually increases game speed
- * 2. Calls onGameOver(score) when a collision is detected
- *
- * Props:
- *   score        {number}
- *   setScore     {function}
- *   onGameOver   {function(finalScore)}
+ * Architecture:
+ *  • Simulation Layer (useFrame):
+ *    - Updates positions, nitro, collision, spawning, scoring.
+ *    - Uses only REFS to avoid expensive React reconciliation.
+ *  • Rendering Layer (3D Components):
+ *    - Bike, OpponentBike, ObstaclePool read from refs and update matrices.
+ *    - Tunnel & Road handle their own internal scroll via refs.
+ *  • UI Layer (App/HUD):
+ *    - HUD reads from hudDataRef on a low-frequency interval.
+ *    - useState strictly for game-over / screen transitions.
+ * ─────────────────────────────────────────────────────────────────
  */
-import { useRef, useState, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Sky, Stars } from '@react-three/drei';
+import { useRef, useState, memo, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Stars } from '@react-three/drei';
+import * as THREE from 'three';
 
-import { Road } from './Road';
-import { Bike } from './Bike';
-import { Obstacle } from './Obstacle';
-import { ScoreBoard } from './ScoreBoard';
+import { Road }         from './Road';
+import { Tunnel }       from './Tunnel';
+import { Bike }         from './Bike';
+import { ObstaclePool } from './ObstaclePool';
 
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
-import { checkCollision } from '../utils/collisionDetection';
-import { spawnObstacle } from '../utils/obstacleSpawner';
+import { useNitro }            from '../hooks/useNitro';
+import { checkCollision }      from '../utils/collisionDetection';
+import { spawnObstacle }       from '../utils/obstacleSpawner';
+import { getBaseSpeed }        from '../utils/speedController';
 
-// ─────────────────────────────────────────────
-// Inner scene component — must be inside <Canvas>
-// ─────────────────────────────────────────────
-function GameScene({ onGameOver }) {
-  const keysRef = useKeyboardControls();
-
-  // Bike world-position shared via ref (updated each frame inside Bike)
-  const bikePos = useRef({ x: 0, z: 5 });
-
-  // Game speed (units / second) — increases over time
-  const speedRef = useRef(12);
-
-  // Obstacle list — stored in a ref to avoid React re-renders inside useFrame
-  const obstaclesRef = useRef([]);
-
-  // Throttle spawning
-  const spawnTimer = useRef(0);
-  const SPAWN_INTERVAL = 1.8; // seconds between obstacle waves
-
-  // Score accumulation
-  const scoreRef = useRef(0);
-  const scoreDisplayRef = useRef(0); // rounded value for display
-
-  // Prevent firing onGameOver multiple times
-  const deadRef = useRef(false);
-
-  // Force React to re-render obstacle list when it changes
-  const [obsVersion, setObsVersion] = useState(0);
-  const obsVersionRef = useRef(0);
-
-  // Score state for display (updated via callback to avoid stale closures)
-  const [displayScore, setDisplayScore] = useState(0);
+// ─────────────────────────────────────────────────────────
+// Chase Camera (Ref-optimized)
+// ─────────────────────────────────────────────────────────
+const ChaseCamera = memo(function ChaseCamera({ bikeXRef, nitroRef }) {
+  const { camera } = useThree();
 
   useFrame((_, delta) => {
+    const nitro = nitroRef.current;
+    const bikeX = bikeXRef.current;
+    const multi = nitro.multiplier;
+
+    // Smoothly calculate target positions
+    const targetX = bikeX * 0.65;
+    const targetY = 3.4 + (multi - 1) * 0.6;
+    const targetZ = 9.0 + (multi - 1) * 3.5;
+    const lerpAmt = Math.min(1, 5 * delta);
+
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, lerpAmt * 0.8);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, lerpAmt * 0.6);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetZ, lerpAmt * 0.5);
+
+    const drift = camera.position.x - bikeX;
+    camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, drift * -0.04, lerpAmt);
+
+    camera.lookAt(bikeX * 0.3, 0.8, -8);
+  });
+
+  return null;
+});
+
+// ─────────────────────────────────────────────────────────
+// Environment (Memoized)
+// ─────────────────────────────────────────────────────────
+const Environment = memo(function Environment() {
+  return (
+    <>
+      <color attach="background" args={['#04000e']} />
+      <fog attach="fog" args={['#04000e', 40, 130]} />
+      <ambientLight intensity={0.15} />
+      <directionalLight position={[4, 14, 6]} intensity={0.6} color="#a080ff" castShadow />
+      <Stars radius={100} depth={60} count={4000} factor={5} saturation={0.4} fade />
+      <mesh position={[0, 1.5, -120]} rotation={[0, 0, 0]}>
+        <planeGeometry args={[120, 2.5]} />
+        <meshStandardMaterial color="#aa00ff" emissive="#aa00ff" emissiveIntensity={2} toneMapped={false} />
+      </mesh>
+    </>
+  );
+});
+
+// ─────────────────────────────────────────────────────────
+// Main Scene
+// ─────────────────────────────────────────────────────────
+function GameScene({ onGameOver, hudDataRef }) {
+  const keysRef  = useKeyboardControls();
+  const nitroRef = useNitro(keysRef);
+
+  // Simulation Refs
+  const bikeXRef    = useRef(0);
+  const leanRef     = useRef(0);
+  const speedRef    = useRef(getBaseSpeed(0));
+  const distanceRef = useRef(0);
+  const gameTimeRef = useRef(0);
+  const obstaclesRef = useRef([]);
+  const deadRef     = useRef(false);
+
+  const spawnTimerRef = useRef(0);
+
+  useFrame((state, delta) => {
     if (deadRef.current) return;
 
-    // Gradually ramp up speed (cap at 28)
-    speedRef.current = Math.min(speedRef.current + 0.5 * delta, 28);
+    const dt = Math.min(delta, 0.1); // Clamp for stability
+    gameTimeRef.current += dt;
 
-    // Accumulate score
-    scoreRef.current += delta * 10 * (speedRef.current / 12);
+    // ── Update Speed & Distance ───────────────────────────
+    const baseS = getBaseSpeed(gameTimeRef.current);
+    const speed = baseS * nitroRef.current.multiplier;
+    speedRef.current = speed;
+    distanceRef.current += speed * dt;
 
-    // Update display score every full integer point
-    const rounded = Math.floor(scoreRef.current);
-    if (rounded !== scoreDisplayRef.current) {
-      scoreDisplayRef.current = rounded;
-      setDisplayScore(rounded);
+    // ── Update HUD Ref ────────────────────────────────────
+    if (hudDataRef.current) {
+      const h = hudDataRef.current;
+      h.speed       = speed;
+      h.fuel        = nitroRef.current.fuel;
+      h.nitroActive = nitroRef.current.active;
+      h.cooldown    = nitroRef.current.cooldownTimer > 0;
+      h.distance    = distanceRef.current;
     }
 
-    // ── Spawn obstacles ──
-    spawnTimer.current += delta;
-    if (spawnTimer.current >= SPAWN_INTERVAL) {
-      spawnTimer.current = 0;
-      // Spawn 1–2 obstacles per wave
-      const count = Math.random() < 0.4 ? 2 : 1;
-      for (let i = 0; i < count; i++) {
-        obstaclesRef.current.push(spawnObstacle());
+    // ── Steering ─────────────────────────────────────────
+    const keys = keysRef.current;
+    const turnSpd = 6.5 + (nitroRef.current.multiplier - 1) * 2.5;
+    if (keys.ArrowLeft)  bikeXRef.current -= turnSpd * dt;
+    if (keys.ArrowRight) bikeXRef.current += turnSpd * dt;
+    bikeXRef.current = THREE.MathUtils.clamp(bikeXRef.current, -3.2, 3.2);
+
+    const tiltTarget = keys.ArrowLeft ? 0.3 : keys.ArrowRight ? -0.3 : 0;
+    leanRef.current = THREE.MathUtils.lerp(leanRef.current, tiltTarget, 8 * dt);
+
+    // ── Obstacle Spawning ────────────────────────────────
+    spawnTimerRef.current += dt;
+    const interval = Math.max(0.6, 2.0 - (gameTimeRef.current * 0.06));
+    if (spawnTimerRef.current >= interval) {
+      spawnTimerRef.current = 0;
+      obstaclesRef.current.push(spawnObstacle());
+    }
+
+    // ── Simulation: Movement & Collision ────────────────
+    const obs = obstaclesRef.current;
+    for (let i = obs.length - 1; i >= 0; i--) {
+      const o = obs[i];
+      
+      // Oncoming traffic moves faster towards the player
+      const relativeSpeed = o.isOncoming ? speed * 2.2 : speed;
+      o.z += relativeSpeed * dt;
+
+      // Despawn
+      if (o.z > 10) {
+        obs.splice(i, 1);
+        continue;
       }
-      obsVersionRef.current++;
-      setObsVersion(obsVersionRef.current); // trigger re-render
-    }
 
-    // ── Move obstacles and check collision ──
-    const speed = speedRef.current;
-    let collided = false;
-    let alive = [];
-
-    for (const obs of obstaclesRef.current) {
-      obs.z += speed * delta;
-
-      // Despawn when past the camera
-      if (obs.z > 10) continue;
-
-      // AABB collision check
-      if (checkCollision(bikePos.current, obs, obs.type)) {
-        collided = true;
-        break;
+      // Check Collision — Zero Re-render
+      if (checkCollision(bikeXRef.current, o, o.type)) {
+        deadRef.current = true;
+        document.body.classList.add('crash');
+        setTimeout(() => {
+          document.body.classList.remove('crash');
+          onGameOver(Math.round(distanceRef.current));
+        }, 500);
+        return;
       }
-
-      alive.push(obs);
-    }
-
-    if (collided) {
-      deadRef.current = true;
-      setTimeout(() => onGameOver(Math.floor(scoreRef.current)), 200);
-      return;
-    }
-
-    if (alive.length !== obstaclesRef.current.length) {
-      obstaclesRef.current = alive;
-      obsVersionRef.current++;
-      setObsVersion(obsVersionRef.current);
     }
   });
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.4} />
-      <directionalLight
-        position={[5, 12, 8]}
-        intensity={1.2}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-      />
-      <pointLight position={[-8, 6, -10]} intensity={0.6} color="#8ecdf7" />
-
-      {/* Sky & stars */}
-      <Sky sunPosition={[0, 0.1, -1]} turbidity={8} rayleigh={0.5} />
-      <Stars radius={80} depth={50} count={3000} factor={4} fade />
-
-      {/* Road */}
+      <ChaseCamera bikeXRef={bikeXRef} nitroRef={nitroRef} />
+      <Environment />
+      
+      {/* Simulation components — all memoized, only logic inside useFrame */}
       <Road speedRef={speedRef} />
-
-      {/* Player bike */}
-      <Bike
-        keysRef={keysRef}
-        bikeRef={bikePos}
-        speedRef={speedRef}
-        gameOver={deadRef.current}
-      />
-
-      {/* Obstacles */}
-      {obstaclesRef.current.map((obs) => (
-        <Obstacle
-          key={obs.id}
-          position={[obs.x, 0, obs.z]}
-          type={obs.type}
-        />
-      ))}
-
-      {/* HUD score */}
-      <ScoreBoard score={displayScore} />
+      <Tunnel speedRef={speedRef} />
+      
+      <Bike bikeXRef={bikeXRef} leanRef={leanRef} nitroRef={nitroRef} />
+      
+      {/* ObstaclePool handles its own logic inside useFrame */}
+      <ObstaclePool obstaclesRef={obstaclesRef} />
     </>
   );
 }
 
-// ─────────────────────────────────────────────
-// Public component
-// ─────────────────────────────────────────────
-export function GameCanvas({ onGameOver }) {
+export function GameCanvas({ onGameOver, hudDataRef }) {
   return (
     <Canvas
       shadows
-      camera={{ position: [0, 5, 12], fov: 60, near: 0.1, far: 500 }}
-      style={{ width: '100%', height: '100%' }}
+      camera={{ position: [0, 3.4, 9], fov: 62 }}
+      gl={{ 
+        antialias: true, 
+        toneMapping: THREE.ACESFilmicToneMapping, 
+        toneMappingExposure: 1.25,
+        powerPreference: 'high-performance'
+      }}
     >
-      <GameScene onGameOver={onGameOver} />
+      <GameScene onGameOver={onGameOver} hudDataRef={hudDataRef} />
     </Canvas>
   );
 }
