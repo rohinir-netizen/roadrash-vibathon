@@ -1,68 +1,273 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* ═══════════════════════════════════════════════
+   Moto Rush — Global Styles
+   ═══════════════════════════════════════════════ */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Inter:wght@400;500;600&display=swap");
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
+/* ── Reset & base ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
   margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #060912;
+}
+
+/* ── Root layout ── */
+.game-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  font-family: "Inter", sans-serif;
+  overflow: hidden;
+}
+
+/* ── Canvas wrapper ── */
+.canvas-wrapper {
+  position: absolute;
+  inset: 0;
+}
+
+/* ═══════════════════════════════════════════════
+   Overlay (Start + Game Over)
+   ═══════════════════════════════════════════════ */
+.overlay {
+  position: absolute;
+  inset: 0;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #0d1b38cc 0%, #040810ee 100%);
+  backdrop-filter: blur(2px);
+  z-index: 10;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.overlay-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding: 48px 56px;
+  border-radius: 24px;
+  border: 1px solid rgba(100, 160, 255, 0.2);
+  background: rgba(10, 20, 50, 0.85);
+  box-shadow:
+    0 0 40px rgba(30, 100, 255, 0.15),
+    0 0 80px rgba(30, 80, 200, 0.08);
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+/* ── Title ── */
+.game-title {
+  font-family: "Orbitron", sans-serif;
+  font-size: 3.4rem;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-shadow:
+    0 0 20px rgba(100, 180, 255, 0.8),
+    0 0 60px rgba(40, 120, 255, 0.4);
+}
+
+.title-icon {
+  font-size: 3.2rem;
+  animation: hover-icon 2.5s ease-in-out infinite;
+}
+
+@keyframes hover-icon {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.subtitle {
+  color: rgba(180, 200, 255, 0.7);
+  font-size: 1.05rem;
+  letter-spacing: 0.5px;
+}
+
+/* ── Controls hint ── */
+.controls-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 28px;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(180, 200, 255, 0.75);
+  font-size: 0.9rem;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-family: "Inter", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* ── Start button ── */
+.btn-start {
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 38px;
+  border: none;
+  border-radius: 50px;
+  background: linear-gradient(135deg, #1a73e8, #0d47a1);
+  color: #fff;
+  font-family: "Orbitron", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 24px rgba(26, 115, 232, 0.5);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+.btn-start:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 32px rgba(26, 115, 232, 0.7);
+}
+
+.btn-start:active {
+  transform: scale(0.97);
+}
+
+.key-hint {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  font-family: "Inter", sans-serif;
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════
+   Game Over panel extras
+   ═══════════════════════════════════════════════ */
+.overlay-panel.gameover {
+  border-color: rgba(231, 76, 60, 0.3);
+  box-shadow:
+    0 0 40px rgba(231, 76, 60, 0.15),
+    0 0 80px rgba(180, 40, 40, 0.08);
+}
+
+.gameover-icon {
+  font-size: 4rem;
+  animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
   }
-  a:hover {
-    color: #747bff;
+  20% {
+    transform: translateX(-8px) rotate(-4deg);
   }
-  button {
-    background-color: #f9f9f9;
+  40% {
+    transform: translateX(8px) rotate(4deg);
   }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+.gameover-title {
+  font-family: "Orbitron", sans-serif;
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #e74c3c;
+  text-shadow: 0 0 20px rgba(231, 76, 60, 0.6);
+  letter-spacing: 2px;
+}
+
+.score-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.score-label {
+  color: rgba(180, 200, 255, 0.6);
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.score-value {
+  font-family: "Orbitron", sans-serif;
+  font-size: 3.8rem;
+  font-weight: 800;
+  color: #f1c40f;
+  text-shadow: 0 0 20px rgba(241, 196, 15, 0.6);
+  line-height: 1;
+}
+
+/* ═══════════════════════════════════════════════
+   HUD — Score (inside canvas via Drei Html)
+   ═══════════════════════════════════════════════ */
+.hud-score {
+  font-family: "Orbitron", sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  text-shadow: 0 0 10px rgba(100, 180, 255, 0.8);
+}
+
+.hud-score span {
+  color: #f1c40f;
+  min-width: 48px;
+  display: inline-block;
 }
